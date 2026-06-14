@@ -7,12 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
-# Platform-specific settings
-if(WIN32)
+# Platform-specific compiler flags
+if(MSVC)
+    # Windows MSVC build
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-else()
-    # Linux build settings
-    add_compile_options(-fPIC)
+elif(UNIX AND NOT APPLE)
+    # Linux/Unix build
+    add_compile_options(-fPIC -Wno-unknown-pragmas)
     # Enable ptrace debugging
     add_compile_definitions(_GNU_SOURCE)
 endif()
@@ -31,12 +32,16 @@ set(BUILD_CPR_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
-if(WIN32)
+# Platform-specific curl options
+if(MSVC OR WIN32)
+    # Windows: Use native Windows TLS (SChannel)
     set(CURL_STATICLIB ON CACHE BOOL "" FORCE)
     set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
 else()
-    # Linux: use OpenSSL
+    # Linux/Unix: Use OpenSSL for TLS
     set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
+    # Find system OpenSSL
+    find_package(OpenSSL REQUIRED)
 endif()
 
 set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
@@ -88,11 +93,22 @@ include_directories(src ${PROJECT_BINARY_DIR})
 file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.cxx" "src/*.cc")
 
 add_executable(roblox-dumper ${SOURCES})
-target_link_libraries(roblox-dumper PRIVATE spdlog::spdlog glm::glm cpr::cpr httplib::httplib nlohmann_json::nlohmann_json Zydis)
 
-if(WIN32)
+# Link dependencies
+if(MSVC OR WIN32)
     set_property(TARGET roblox-dumper PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    target_link_libraries(roblox-dumper PRIVATE spdlog::spdlog glm::glm cpr::cpr httplib::httplib nlohmann_json::nlohmann_json Zydis)
 else()
-    # Linux-specific libraries
-    target_link_libraries(roblox-dumper PRIVATE dl)
+    # Linux/Unix: Link with system OpenSSL and ptrace support
+    target_link_libraries(roblox-dumper PRIVATE 
+        spdlog::spdlog 
+        glm::glm 
+        cpr::cpr 
+        httplib::httplib 
+        nlohmann_json::nlohmann_json 
+        Zydis
+        OpenSSL::Crypto
+        OpenSSL::SSL
+        dl  # For dlopen/dlsym used in process attachment
+    )
 endif()
